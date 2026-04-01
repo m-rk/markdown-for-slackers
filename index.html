@@ -775,9 +775,6 @@ function convert() {
   const opts = readOpts();
   lastMrkdwn = convertToMrkdwn(inputEl.value, opts);
   lastHTML   = convertToHTML(inputEl.value, opts);
-  console.log('opts:', JSON.stringify(opts));
-  console.log('mrkdwn:', lastMrkdwn.slice(0, 300));
-  console.log('html:', lastHTML.slice(0, 300));
   // sanitizeHTML strips javascript: hrefs and on* attributes before setting innerHTML
   outputPreview.innerHTML = sanitizeHTML(lastHTML); // safe: all structural HTML is self-generated
   charCountEl.textContent = lastMrkdwn.length ? `${lastMrkdwn.length} chars` : '';
