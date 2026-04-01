@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Markdown → Slack</title>
+  <title>Markdown for Slackers</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -287,7 +287,7 @@
 <body>
 
 <header>
-  <h1>Markdown <span class="arrow">→</span> Slack</h1>
+  <h1>Markdown for Slackers</h1>
   <span style="font-size:10px;color:var(--text-2);opacity:.5" id="build"></span>
   <button class="btn-icon" id="settings-toggle" title="Options (⚙)">⚙</button>
 </header>
@@ -622,7 +622,7 @@ function convertToMrkdwn(raw, opts) {
   // after inline processing (avoids italic regex eating the * markers)
   text = text.split('\n').map(line => {
     if (line.startsWith('CBLK_')) return line;
-    const hMatch = line.match(/^[ \t]*(#{1,6})[ \t]+(.+)$/);
+    const hMatch = line.match(/^(#{1,6})[ \t]+(.+)$/);
     if (hMatch) return `*${hMatch[2].trim()}*`;
     return processInlineMrkdwn(opts.stripLeading ? line.trimStart() : line, codes);
   }).join('\n');
@@ -712,7 +712,7 @@ function convertToHTML(raw, opts) {
     }
 
     // Header — all levels map to h1 since Slack has no heading hierarchy
-    const hMatch = line.match(/^[ \t]*(#{1,6})[ \t]+(.+)$/);
+    const hMatch = line.match(/^(#{1,6})[ \t]+(.+)$/);
     if (hMatch) {
       closeList();
       out.push(`<h1>${processInlineHTML(esc(hMatch[2].trim()), codes, esc)}</h1>`);
@@ -753,9 +753,10 @@ function convertToHTML(raw, opts) {
       continue;
     }
 
-    // Paragraph — trimStart so any residual leading whitespace (e.g. not stripped by option) is removed
+    // Paragraph
     closeList();
-    out.push(`<p>${processInlineHTML(esc(line.trimStart()), codes, esc)}</p>`);
+    const paraLine = opts.stripLeading ? line.trimStart() : line;
+    out.push(`<p>${processInlineHTML(esc(paraLine), codes, esc)}</p>`);
   }
 
   closeList();
