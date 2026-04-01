@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown → Slack</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-2: #f7f7f7;
+      --bg-3: #ebebeb;
+      --border: #ddd;
+      --text: #1a1a1a;
+      --text-2: #666;
+      --accent: #4a90e2;
+      --accent-hover: #3578c7;
+      --btn-bg: #e8e8e8;
+      --btn-hover: #dadada;
+      --success: #27ae60;
+      --shadow: rgba(0,0,0,0.07);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1e1e1e;
+        --bg-2: #252525;
+        --bg-3: #2d2d2d;
+        --border: #3a3a3a;
+        --text: #e4e4e4;
+        --text-2: #888;
+        --accent: #5aa3f0;
+        --accent-hover: #4a93e0;
+        --btn-bg: #333;
+        --btn-hover: #3c3c3c;
+        --success: #2ecc71;
+        --shadow: rgba(0,0,0,0.3);
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    h1 { font-size: 15px; font-weight: 600; }
+    h1 .arrow { color: var(--text-2); font-weight: 400; }
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-2);
+      font-size: 16px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+    .btn-icon:hover { background: var(--bg-3); color: var(--text); }
+
+    /* ── Settings ── */
+    #settings-panel {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px 20px;
+      padding: 10px 14px;
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #settings-panel.open { display: flex; }
+    .setting-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12.5px;
+      color: var(--text-2);
+      cursor: pointer;
+      user-select: none;
+    }
+    .setting-item:hover { color: var(--text); }
+    .setting-item input[type=checkbox] { cursor: pointer; accent-color: var(--accent); }
+
+    /* ── Split panes ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .pane + .pane { border-left: 1px solid var(--border); }
+    .pane-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-2);
+      padding: 7px 12px;
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    textarea {
+      flex: 1;
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      padding: 12px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12.5px;
+      line-height: 1.65;
+      background: var(--bg);
+      color: var(--text);
+    }
+    textarea::placeholder { color: var(--text-2); opacity: 0.7; }
+
+    /* ── Rich text output preview ── */
+    #output-preview {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+    #output-preview:empty::before {
+      content: 'Converted output will appear here…';
+      color: var(--text-2);
+      opacity: 0.7;
+    }
+    #output-preview p { margin: 0 0 0.6em; }
+    #output-preview p:last-child { margin-bottom: 0; }
+    #output-preview h1 {
+      font-weight: 700;
+      margin: 0.8em 0 0.3em;
+      font-size: inherit;
+    }
+    #output-preview h1:first-child { margin-top: 0; }
+    #output-preview b, #output-preview strong { font-weight: 700; }
+    #output-preview i, #output-preview em { font-style: italic; }
+    #output-preview del { text-decoration: line-through; color: var(--text-2); }
+    #output-preview code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: var(--bg-3);
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+    #output-preview pre {
+      background: var(--bg-3);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      margin: 0.5em 0;
+    }
+    #output-preview pre code {
+      background: none;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    #output-preview blockquote {
+      border-left: 3px solid var(--border);
+      margin: 0.4em 0;
+      padding: 2px 0 2px 10px;
+      color: var(--text-2);
+    }
+    #output-preview ul, #output-preview ol {
+      padding-left: 1.4em;
+      margin: 0.3em 0;
+    }
+    #output-preview li { margin: 0.15em 0; }
+    #output-preview a { color: var(--accent); text-decoration: none; }
+    #output-preview a:hover { text-decoration: underline; }
+    #output-preview hr { border: none; border-top: 1px solid var(--border); margin: 0.6em 0; }
+    #output-preview table { border-collapse: collapse; font-size: 12.5px; margin: 0.4em 0; }
+    #output-preview th, #output-preview td {
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+    }
+    #output-preview th { background: var(--bg-2); font-weight: 600; }
+
+    /* ── Action bar ── */
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .action-bar .spacer { flex: 1; }
+    .char-count { font-size: 11.5px; color: var(--text-2); }
+    button.btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 7px 13px;
+      background: var(--btn-bg);
+      color: var(--text);
+      transition: background 0.12s, color 0.12s;
+    }
+    button.btn:hover { background: var(--btn-hover); }
+    button.btn.success { background: var(--success); color: #fff; }
+
+    /* ── Tips panel ── */
+    #tips-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 9px 14px;
+      background: var(--bg-2);
+      border: none;
+      border-top: 1px solid var(--border);
+      cursor: pointer;
+      color: var(--text-2);
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+      flex-shrink: 0;
+    }
+    #tips-toggle:hover { background: var(--bg-3); color: var(--text); }
+    #tips-toggle .arrow { display: inline-block; transition: transform 0.15s; font-size: 10px; }
+    #tips-toggle.open .arrow { transform: rotate(90deg); }
+    #tips-panel {
+      display: none;
+      padding: 12px 14px 14px;
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-y: auto;
+      max-height: 200px;
+    }
+    #tips-panel.open { display: block; }
+    .tips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .tip-section h3 {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-2);
+      margin-bottom: 6px;
+    }
+    .tip-section ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .tip-section li { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+    .tip-section li::before { content: "• "; color: var(--accent); }
+    kbd {
+      display: inline-block;
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0px 4px;
+      font-family: inherit;
+      font-size: 11px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Markdown <span class="arrow">→</span> Slack</h1>
+  <span style="font-size:10px;color:var(--text-2);opacity:.5" id="build"></span>
+  <button class="btn-icon" id="settings-toggle" title="Options (⚙)">⚙</button>
+</header>
+
+<div id="settings-panel">
+  <label class="setting-item">
+    <input type="checkbox" id="opt-strip-leading">
+    Strip leading whitespace <span style="font-size:11px;opacity:.6">(Ghostty/terminal artifact)</span>
+  </label>
+  <label class="setting-item">
+    <input type="checkbox" id="opt-unwrap">
+    Unwrap soft line breaks <span style="font-size:11px;opacity:.6">(terminal-wrapped paragraphs)</span>
+  </label>
+  <label class="setting-item">
+    <input type="checkbox" id="opt-strip-ansi">
+    Strip ANSI codes
+  </label>
+  <label class="setting-item">
+    <input type="checkbox" id="opt-normalize-indent">
+    Normalize code block indent
+  </label>
+</div>
+
+<div class="main">
+  <div class="pane">
+    <div class="pane-label">Markdown Input</div>
+    <textarea id="input" placeholder="Paste markdown here…" spellcheck="false" autofocus></textarea>
+  </div>
+  <div class="pane">
+    <div class="pane-label">Slack Output (preview)</div>
+    <div id="output-preview"></div>
+  </div>
+</div>
+
+<div class="action-bar">
+  <button class="btn" id="btn-copy-mrkdwn">Copy as mrkdwn</button>
+  <button class="btn" id="btn-copy-rich">Copy as Rich Text</button>
+  <div class="spacer"></div>
+  <span class="char-count" id="char-count"></span>
+  <button class="btn" id="btn-clear">Clear</button>
+</div>
+
+<button id="tips-toggle"><span class="arrow">▶</span> Tips &amp; Shortcuts</button>
+<div id="tips-panel">
+  <div class="tips-grid">
+    <div class="tip-section">
+      <h3>Terminal Copy</h3>
+      <ul>
+        <li>Ghostty: <kbd>Cmd+Shift+C</kbd> copies without trailing soft linebreaks</li>
+        <li>iTerm2: <kbd>Edit → Copy Without Newlines at End</kbd></li>
+        <li>Enable "Unwrap soft line breaks" above if lines were wrapped at ~80 chars</li>
+      </ul>
+    </div>
+    <div class="tip-section">
+      <h3>Pasting into Slack</h3>
+      <ul>
+        <li><b>Rich Text</b> paste: Slack renders bold, italic, code inline</li>
+        <li><b>mrkdwn</b> paste: Slack renders formatting after you send</li>
+        <li><kbd>Shift+Enter</kbd> — newline without sending in Slack</li>
+        <li>Rich Text paste works best in Slack desktop app</li>
+      </ul>
+    </div>
+    <div class="tip-section">
+      <h3>Conversion Notes</h3>
+      <ul>
+        <li>Tables → <code>code blocks</code> (Slack has no table support)</li>
+        <li>Headers → <b>*bold text*</b> (Slack has no heading syntax)</li>
+        <li>Images → links; code fence language tags are stripped</li>
+        <li>Task lists: <code>- [ ]</code> → ☐, <code>- [x]</code> → ☑</li>
+      </ul>
+    </div>
+    <div class="tip-section">
+      <h3>Claude Code Tips</h3>
+      <ul>
+        <li>Copying from claude.ai web gives cleaner markdown than terminal</li>
+        <li><kbd>Cmd+A</kbd> in the input area to select all, then paste over</li>
+        <li>Use "Strip leading whitespace" if every line has an extra space</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+const OPTS_KEY = 'md2slack_opts_v2';
+const DEFAULT_OPTS = { stripLeading: true, unwrap: true, stripAnsi: true, normalizeIndent: true };
+
+function loadOpts() {
+  try { return { ...DEFAULT_OPTS, ...JSON.parse(localStorage.getItem(OPTS_KEY) || '{}') }; }
+  catch { return { ...DEFAULT_OPTS }; }
+}
+function saveOpts(o) { localStorage.setItem(OPTS_KEY, JSON.stringify(o)); }
+function readOpts() {
+  return {
+    stripLeading: document.getElementById('opt-strip-leading').checked,
+    unwrap: document.getElementById('opt-unwrap').checked,
+    stripAnsi: document.getElementById('opt-strip-ansi').checked,
+    normalizeIndent: document.getElementById('opt-normalize-indent').checked,
+  };
+}
+function applyOpts(o) {
+  document.getElementById('opt-strip-leading').checked = o.stripLeading;
+  document.getElementById('opt-unwrap').checked = o.unwrap;
+  document.getElementById('opt-strip-ansi').checked = o.stripAnsi;
+  document.getElementById('opt-normalize-indent').checked = o.normalizeIndent;
+}
+
+// ─── Preprocessing ─────────────────────────────────────────────────────────────
+
+function normalizeUnicodeSpaces(text) {
+  // Replace non-breaking spaces and other Unicode space variants with regular spaces.
+  // Web sources (claude.ai, Notion, Google Docs) commonly use \u00A0 and similar.
+  return text.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+}
+
+function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return text
+    .replace(/\x1B\[[0-9;]*[mGKHFJABCDhlr]/g, '')
+    .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
+    .replace(/\x1B[()][AB012]/g, '');
+}
+
+function stripLeadingWhitespace(text) {
+  // Strip exactly 1 leading space per line that has one.
+  // The terminal artifact (e.g. Ghostty) adds 1 space per line when copying,
+  // but not necessarily uniformly (e.g. the very first line may lack it).
+  // A global-minimum approach fails when any line has 0 leading spaces.
+  return text.split('\n').map(l => l.startsWith(' ') ? l.slice(1) : l).join('\n');
+}
+
+// Only allow safe URL protocols to prevent javascript: injection in href attributes
+function sanitizeUrl(url) {
+  try {
+    const u = new URL(url);
+    return /^(https?|mailto|ftp):$/i.test(u.protocol) ? url : '#';
+  } catch {
+    // Relative URLs are fine
+    return url.startsWith('#') || url.startsWith('/') || url.startsWith('.') ? url : '#';
+  }
+}
+
+// Sanitize generated HTML before setting innerHTML: strip javascript: URLs and on* handlers.
+// We generate all structural tags ourselves; only href values from user markdown need sanitizing.
+function sanitizeHTML(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('[href]').forEach(el => {
+    el.setAttribute('href', sanitizeUrl(el.getAttribute('href')));
+  });
+  doc.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+    });
+  });
+  return doc.body.innerHTML;
+}
+
+function unwrapSoftLineBreaks(text) {
+  // Within a paragraph, merge lines that look like terminal-wrapped continuations.
+  // Block starters and blank lines always break the merge.
+  const BLOCK = /^([ \t]*([-*+]|\d+\.)[ \t]|#{1,6}[ \t]|>|CBLK_)/;
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '' || BLOCK.test(line)) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    // Accumulate wrapped continuation lines
+    let para = line;
+    while (
+      i + 1 < lines.length &&
+      lines[i + 1].trim() !== '' &&
+      !BLOCK.test(lines[i + 1]) &&
+      !lines[i].endsWith('  ')
+    ) {
+      i++;
+      para += ' ' + lines[i];
+    }
+    out.push(para);
+    i++;
+  }
+  return out.join('\n');
+}
+
+// ─── Code block extraction ────────────────────────────────────────────────────
+
+function extractCodeBlocks(text) {
+  const blocks = [];
+  // Match fenced code blocks (``` or ~~~, with optional language tag)
+  const result = text.replace(/^(`{3,}|~{3,})([ \t]*)(\S*)[^\n]*\n([\s\S]*?)\n?\1[ \t]*$/gm,
+    (_, fence, _ws, lang, content) => {
+      const id = `CBLK_${blocks.length}`;
+      blocks.push({ lang, content });
+      return id;
+    });
+  return { text: result, blocks };
+}
+
+function normalizeCodeIndent(content) {
+  const lines = content.split('\n');
+  let min = Infinity;
+  for (const l of lines) {
+    if (l.trim() === '') continue;
+    const spaces = l.match(/^( *)/)[1].length;
+    min = Math.min(min, spaces);
+  }
+  if (!isFinite(min) || min === 0) return content;
+  return lines.map(l => l.trim() === '' ? '' : l.slice(min)).join('\n');
+}
+
+// ─── Table helpers ────────────────────────────────────────────────────────────
+
+function tableToFixedWidth(tableText) {
+  const allRows = tableText.trim().split('\n');
+  // Separate separator row
+  const rows = allRows.filter(l => !/^\|?[ \t]*[-:|]+[ \t]*(\|[ \t]*[-:|]+[ \t]*)+\|?$/.test(l.trim()));
+  const parsed = rows.map(r =>
+    r.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+  );
+  if (!parsed.length) return tableText;
+  const cols = Math.max(...parsed.map(r => r.length));
+  const widths = Array.from({ length: cols }, (_, c) =>
+    Math.max(...parsed.map(r => (r[c] || '').length), 3)
+  );
+  const fmtRow = row => '| ' + widths.map((w, i) => (row[i] || '').padEnd(w)).join(' | ') + ' |';
+  const sep = '| ' + widths.map(w => '-'.repeat(w)).join(' | ') + ' |';
+  return '```\n' + [fmtRow(parsed[0]), sep, ...parsed.slice(1).map(fmtRow)].join('\n') + '\n```';
+}
+
+// ─── Inline processing helpers ────────────────────────────────────────────────
+
+// We use private-use-area chars as bold/italic placeholders during inline processing
+// to prevent bold markers (*) from being re-matched as italic.
+const PH_B_OPEN = '\uE000', PH_B_CLOSE = '\uE001'; // bold placeholder
+const PH_I_OPEN = '\uE002', PH_I_CLOSE = '\uE003'; // italic placeholder
+
+function processInlineMrkdwn(text, codes) {
+  // Restore inline code first (verbatim — no further processing)
+  text = text.replace(/ICODE_(\d+)/g, (_, i) => '`' + codes[+i] + '`');
+
+  // Bold: **text** / __text__ → *text*  (use placeholder to avoid italic confusion)
+  text = text.replace(/\*\*(.+?)\*\*/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
+  text = text.replace(/__(.+?)__/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
+
+  // Italic: *text* / _text_ → _text_
+  text = text.replace(/\*([^*\n]+?)\*/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+  text = text.replace(/_([^_\n]+?)_/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+
+  // Resolve placeholders
+  text = text.replace(new RegExp(`${PH_B_OPEN}(.+?)${PH_B_CLOSE}`, 'gs'), '*$1*');
+  text = text.replace(new RegExp(`${PH_I_OPEN}(.+?)${PH_I_CLOSE}`, 'gs'), '_$1_');
+
+  // Strikethrough
+  text = text.replace(/~~(.+?)~~/g, '~$1~');
+
+  // Links/images: ![alt](url) and [text](url) → <url|text>
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => `<${url}|${alt || url}>`);
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => `<${url}|${label}>`);
+
+  // Bare autolinks: <https://...>
+  // Bare autolinks only — exclude | so <url|text> Slack links aren't stripped
+  text = text.replace(/<(https?:\/\/[^>|]+)>/g, '$1');
+
+  return text;
+}
+
+function processInlineHTML(text, codes, esc) {
+  text = text.replace(/ICODE_(\d+)/g, (_, i) => `<code>${esc(codes[+i])}</code>`);
+
+  text = text.replace(/\*\*(.+?)\*\*/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
+  text = text.replace(/__(.+?)__/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
+  text = text.replace(/\*([^*\n]+?)\*/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+  text = text.replace(/_([^_\n]+?)_/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+
+  text = text.replace(new RegExp(`${PH_B_OPEN}(.+?)${PH_B_CLOSE}`, 'gs'), '<b>$1</b>');
+  text = text.replace(new RegExp(`${PH_I_OPEN}(.+?)${PH_I_CLOSE}`, 'gs'), '<i>$1</i>');
+
+  text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) =>
+    `<a href="${esc(sanitizeUrl(url))}">${esc(alt) || esc(url)}</a>`);
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) =>
+    `<a href="${esc(sanitizeUrl(url))}">${esc(label)}</a>`);
+  text = text.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, (_, url) =>
+    `<a href="${sanitizeUrl(url)}">${url}</a>`);
+
+  return text;
+}
+
+// ─── Markdown → mrkdwn ────────────────────────────────────────────────────────
+
+function convertToMrkdwn(raw, opts) {
+  let text = raw;
+
+  text = normalizeUnicodeSpaces(text);
+  if (opts.stripAnsi) text = stripAnsi(text);
+  if (opts.stripLeading) text = stripLeadingWhitespace(text);
+
+  // Extract code blocks before any other processing
+  const { text: t1, blocks } = extractCodeBlocks(text);
+  text = t1;
+
+  if (opts.unwrap) text = unwrapSoftLineBreaks(text);
+
+  // Extract inline code
+  const codes = [];
+  text = text.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `ICODE_${codes.length - 1}`; });
+
+  // Tables: find markdown tables and convert to fixed-width code blocks
+  text = text.replace(/((?:^\|[^\n]+\|\n)+)/gm, match => {
+    if (/\|[ \t]*[-:]+[-| \t:]*\|/.test(match)) return tableToFixedWidth(match) + '\n';
+    return match;
+  });
+
+  // Task lists (before general list processing)
+  text = text.replace(/^([ \t]*[-*+][ \t]+)\[ \][ \t]/gm, '$1☐ ');
+  text = text.replace(/^([ \t]*[-*+][ \t]+)\[x\][ \t]/gim, '$1☑ ');
+
+  // Horizontal rules → separator
+  text = text.replace(/^[ \t]*([-*_]){3,}[ \t]*$/gm, '———');
+
+  // Unordered lists: - / * / + → bullet
+  text = text.replace(/^([ \t]*)[-*+][ \t]+/gm, (_, indent) => indent + '• ');
+
+  // Process line by line: detect headings here so they're converted to *bold*
+  // after inline processing (avoids italic regex eating the * markers)
+  text = text.split('\n').map(line => {
+    if (line.startsWith('CBLK_')) return line;
+    const hMatch = line.match(/^[ \t]*(#{1,6})[ \t]+(.+)$/);
+    if (hMatch) return `*${hMatch[2].trim()}*`;
+    return processInlineMrkdwn(opts.stripLeading ? line.trimStart() : line, codes);
+  }).join('\n');
+
+  // Restore code blocks
+  text = text.replace(/CBLK_(\d+)/g, (_, i) => {
+    let content = blocks[+i].content;
+    if (opts.normalizeIndent) content = normalizeCodeIndent(content);
+    return '```\n' + content + '\n```';
+  });
+
+  // Clean up: collapse 3+ blank lines to 2, trim trailing spaces per line
+  text = text.replace(/\n{3,}/g, '\n\n');
+  text = text.split('\n').map(l => l.trimEnd()).join('\n');
+
+  return text.trimEnd();
+}
+
+// ─── Markdown → HTML (rich text clipboard) ────────────────────────────────────
+
+function convertToHTML(raw, opts) {
+  let text = raw;
+
+  text = normalizeUnicodeSpaces(text);
+  if (opts.stripAnsi) text = stripAnsi(text);
+  if (opts.stripLeading) text = stripLeadingWhitespace(text);
+
+  const { text: t1, blocks } = extractCodeBlocks(text);
+  text = t1;
+
+  if (opts.unwrap) text = unwrapSoftLineBreaks(text);
+
+  const codes = [];
+  text = text.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `ICODE_${codes.length - 1}`; });
+
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const lines = text.split('\n');
+  const out = [];
+  let listType = null; // 'ul' | 'ol' | null
+
+  const closeList = () => {
+    if (listType) { out.push(`</${listType}>`); listType = null; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Code block placeholder
+    if (/^CBLK_\d+$/.test(line.trim())) {
+      closeList();
+      const idx = parseInt(line.match(/\d+/)[0]);
+      let content = blocks[idx].content;
+      if (opts.normalizeIndent) content = normalizeCodeIndent(content);
+      out.push(`<pre><code>${esc(content)}</code></pre>`);
+      continue;
+    }
+
+    // Table detection
+    if (line.startsWith('|') && i + 1 < lines.length && /^\|[ \t]*[-:]+/.test(lines[i + 1])) {
+      closeList();
+      const tableLines = [line];
+      while (i + 1 < lines.length && lines[i + 1].startsWith('|')) tableLines.push(lines[++i]);
+      const dataRows = tableLines.filter(l => !/^\|[ \t]*[-:|]+/.test(l));
+      out.push('<table style="border-collapse:collapse">');
+      dataRows.forEach((row, ri) => {
+        const cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+        const tag = ri === 0 ? 'th' : 'td';
+        const style = 'style="border:1px solid #ccc;padding:4px 8px"';
+        out.push('<tr>' + cells.map(c => `<${tag} ${style}>${esc(c)}</${tag}>`).join('') + '</tr>');
+      });
+      out.push('</table>');
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === '') {
+      closeList();
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^[ \t]*([-*_]){3,}[ \t]*$/.test(line)) {
+      closeList();
+      out.push('<hr>');
+      continue;
+    }
+
+    // Header — all levels map to h1 since Slack has no heading hierarchy
+    const hMatch = line.match(/^[ \t]*(#{1,6})[ \t]+(.+)$/);
+    if (hMatch) {
+      closeList();
+      out.push(`<h1>${processInlineHTML(esc(hMatch[2].trim()), codes, esc)}</h1>`);
+      continue;
+    }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      closeList();
+      out.push(`<blockquote>${processInlineHTML(esc(line.slice(2)), codes, esc)}</blockquote>`);
+      continue;
+    }
+
+    // Task list items
+    const taskUnchecked = line.match(/^[ \t]*[-*+][ \t]+\[ \][ \t](.+)$/);
+    const taskChecked   = line.match(/^[ \t]*[-*+][ \t]+\[x\][ \t](.+)$/i);
+    if (taskUnchecked || taskChecked) {
+      if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+      const checked = !!taskChecked;
+      const content = processInlineHTML(esc((taskChecked || taskUnchecked)[1]), codes, esc);
+      out.push(`<li><input type="checkbox"${checked ? ' checked' : ''} disabled> ${content}</li>`);
+      continue;
+    }
+
+    // Unordered list
+    const ulMatch = line.match(/^[ \t]*[-*+][ \t]+(.+)$/);
+    if (ulMatch) {
+      if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+      out.push(`<li>${processInlineHTML(esc(ulMatch[1]), codes, esc)}</li>`);
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = line.match(/^[ \t]*\d+\.[ \t]+(.+)$/);
+    if (olMatch) {
+      if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; }
+      out.push(`<li>${processInlineHTML(esc(olMatch[1]), codes, esc)}</li>`);
+      continue;
+    }
+
+    // Paragraph — trimStart so any residual leading whitespace (e.g. not stripped by option) is removed
+    closeList();
+    out.push(`<p>${processInlineHTML(esc(line.trimStart()), codes, esc)}</p>`);
+  }
+
+  closeList();
+  return out.join('\n');
+}
+
+// ─── UI ────────────────────────────────────────────────────────────────────────
+
+const inputEl       = document.getElementById('input');
+const outputPreview = document.getElementById('output-preview');
+const charCountEl   = document.getElementById('char-count');
+
+let lastMrkdwn = '';
+let lastHTML   = '';
+
+function convert() {
+  const opts = readOpts();
+  lastMrkdwn = convertToMrkdwn(inputEl.value, opts);
+  lastHTML   = convertToHTML(inputEl.value, opts);
+  console.log('opts:', JSON.stringify(opts));
+  console.log('mrkdwn:', lastMrkdwn.slice(0, 300));
+  console.log('html:', lastHTML.slice(0, 300));
+  // sanitizeHTML strips javascript: hrefs and on* attributes before setting innerHTML
+  outputPreview.innerHTML = sanitizeHTML(lastHTML); // safe: all structural HTML is self-generated
+  charCountEl.textContent = lastMrkdwn.length ? `${lastMrkdwn.length} chars` : '';
+}
+
+inputEl.addEventListener('input', convert);
+
+// Settings toggle
+document.getElementById('settings-toggle').addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.toggle('open');
+});
+
+document.querySelectorAll('#settings-panel input[type=checkbox]').forEach(el => {
+  el.addEventListener('change', () => { saveOpts(readOpts()); convert(); });
+});
+
+// Tips toggle
+document.getElementById('tips-toggle').addEventListener('click', () => {
+  document.getElementById('tips-toggle').classList.toggle('open');
+  document.getElementById('tips-panel').classList.toggle('open');
+});
+
+// Clear
+document.getElementById('btn-clear').addEventListener('click', () => {
+  inputEl.value = '';
+  outputPreview.innerHTML = '';
+  lastMrkdwn = '';
+  lastHTML = '';
+  charCountEl.textContent = '';
+  inputEl.focus();
+});
+
+// Copy as mrkdwn
+const btnMrkdwn = document.getElementById('btn-copy-mrkdwn');
+btnMrkdwn.addEventListener('click', async () => {
+  if (!lastMrkdwn) return;
+  await navigator.clipboard.writeText(lastMrkdwn);
+  flash(btnMrkdwn, 'Copy as mrkdwn');
+});
+
+// Copy as Rich Text
+const btnRich = document.getElementById('btn-copy-rich');
+btnRich.addEventListener('click', async () => {
+  if (!lastHTML) return;
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html':  new Blob([lastHTML],   { type: 'text/html' }),
+        'text/plain': new Blob([lastMrkdwn], { type: 'text/plain' }),
+      })
+    ]);
+  } catch {
+    await navigator.clipboard.writeText(lastMrkdwn);
+  }
+  flash(btnRich, 'Copy as Rich Text');
+});
+
+function flash(btn, label) {
+  btn.textContent = 'Copied!';
+  btn.classList.add('success');
+  setTimeout(() => { btn.textContent = label; btn.classList.remove('success'); }, 1500);
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+
+applyOpts(loadOpts());
+document.getElementById('build').textContent = 'build: 2026-04-01T' + new Date().toLocaleTimeString();
+</script>
+</body>
+</html>
