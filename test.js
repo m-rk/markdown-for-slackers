@@ -91,6 +91,8 @@ assert('no stripping when option off',        convertToMrkdwn(' A paragraph.', {
 console.log('\nInline formatting');
 assert('bold **text**',                       convertToMrkdwn('**bold**', opts),              '*bold*');
 assert('italic _text_',                       convertToMrkdwn('_italic_', opts),              '_italic_');
+assert('mid-word underscore not italic',      convertToMrkdwn('some_var_name', opts),         'some_var_name');
+assert('underscore italic at word boundary',  convertToMrkdwn('foo _italic_ bar', opts),      'foo _italic_ bar');
 assert('strikethrough ~~text~~',              convertToMrkdwn('~~strike~~', opts),            '~strike~');
 assert('inline code',                         convertToMrkdwn('use `foo()`', opts),           'use `foo()`');
 assert('link',                                convertToMrkdwn('[Go1](https://go1.com)', opts), '<https://go1.com|Go1>');
@@ -101,10 +103,45 @@ assert('hr → separator',                      convertToMrkdwn('---', opts),   
 assert('task unchecked',                      convertToMrkdwn('- [ ] todo', opts),             '• ☐ todo');
 assert('task checked',                        convertToMrkdwn('- [x] done', opts),             '• ☑ done');
 
+console.log('\nInline code protection');
+assert('underscore in backticks not italic',
+  convertToMrkdwn('use `award_enrolment` here', opts), 'use `award_enrolment` here');
+assert('two inline codes with underscores on same line',
+  convertToMrkdwn('`award_enrolment` INSERTs and `award_enrolment` UPDATEs', opts),
+  '`award_enrolment` INSERTs and `award_enrolment` UPDATEs');
+assert('underscore in backticks not italic in HTML',
+  convertToHTML('use `award_item_enrolment` here', opts), '<p>use <code>award_item_enrolment</code> here</p>');
+assert('table in HTML is code block',
+  convertToHTML('| A | B |\n|---|---|\n| 1 | 2 |', opts).startsWith('<pre><code>'), true);
+
+console.log('\nTables');
+const tableInput = `| Metric | Value |
+|---|---|
+| inserts | 1,360 |
+| updates | 3,316 |`;
+const tableResult = convertToMrkdwn(tableInput, opts);
+assert('table converted to code block', tableResult.startsWith('```'), true);
+assert('table has header row', tableResult.includes('Metric'), true);
+assert('table at end of doc (no trailing newline)',
+  convertToMrkdwn('| A | B |\n|---|---|\n| 1 | 2 |', opts).startsWith('```'), true);
+
+// Table with leading spaces (terminal artifact) — unwrap enabled
+const tableWithSpaces = ` | Metric | Value |
+ |---|---|
+ | inserts | 1,360 |`;
+assert('table with leading spaces converted', convertToMrkdwn(tableWithSpaces, opts).startsWith('```'), true);
+
 console.log('\nHTML preview (convertToHTML)');
 assert('h3 with leading space → <h1>',   convertToHTML(' ### Root Cause', opts), '<h1>Root Cause</h1>');
 assert('h2 → <h1>',                      convertToHTML('## Summary', opts),      '<h1>Summary</h1>');
 assert('paragraph stripped in HTML',     convertToHTML(' A paragraph.', opts),   '<p>A paragraph.</p>');
+
+console.log('\nOrdered lists in HTML');
+assert('ordered list items have value attr',
+  convertToHTML('1. First\n2. Second\n3. Third', opts),
+  '<ol start="1">\n<li value="1">First</li>\n<li value="2">Second</li>\n<li value="3">Third</li>\n</ol>');
+assert('ordered list start attr respected',
+  convertToHTML('3. Third\n4. Fourth', opts).startsWith('<ol start="3">'), true);
 
 // Print the full mrkdwn output of the real document so we can see exactly what's produced
 console.log('\n── Full document output ──');

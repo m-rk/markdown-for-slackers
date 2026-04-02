@@ -48,27 +48,29 @@
 
     /* ── Header ── */
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
+      padding: 10px 14px 9px;
       background: var(--bg-2);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
     h1 { font-size: 15px; font-weight: 600; }
-    h1 .arrow { color: var(--text-2); font-weight: 400; }
-    .btn-icon {
-      background: none;
-      border: none;
-      cursor: pointer;
+    .subtitle {
+      font-size: 11.5px;
       color: var(--text-2);
-      font-size: 16px;
-      padding: 5px 8px;
-      border-radius: 6px;
-      line-height: 1;
+      margin-top: 3px;
+      line-height: 1.5;
     }
-    .btn-icon:hover { background: var(--bg-3); color: var(--text); }
+    #settings-summary {
+      display: inline-block;
+      font-size: 11px;
+      color: var(--text-2);
+      margin-top: 4px;
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+      opacity: 0.8;
+    }
+    #settings-summary:hover { color: var(--text); opacity: 1; }
 
     /* ── Settings ── */
     #settings-panel {
@@ -193,12 +195,7 @@
     #output-preview a { color: var(--accent); text-decoration: none; }
     #output-preview a:hover { text-decoration: underline; }
     #output-preview hr { border: none; border-top: 1px solid var(--border); margin: 0.6em 0; }
-    #output-preview table { border-collapse: collapse; font-size: 12.5px; margin: 0.4em 0; }
-    #output-preview th, #output-preview td {
-      border: 1px solid var(--border);
-      padding: 4px 8px;
-    }
-    #output-preview th { background: var(--bg-2); font-weight: 600; }
+
 
     /* ── Action bar ── */
     .action-bar {
@@ -288,8 +285,8 @@
 
 <header>
   <h1>Markdown for Slackers</h1>
-  <span style="font-size:10px;color:var(--text-2);opacity:.5" id="build"></span>
-  <button class="btn-icon" id="settings-toggle" title="Options (⚙)">⚙</button>
+  <p class="subtitle">Paste your Markdown from wherever, including Claude Code terminals (<kbd>cmd+shift+c</kbd> for Ghostty) and get it Slack-friendly</p>
+  <div id="settings-summary"></div>
 </header>
 
 <div id="settings-panel">
@@ -323,11 +320,11 @@
 </div>
 
 <div class="action-bar">
+  <button class="btn" id="btn-clear">Clear</button>
+  <span class="char-count" id="char-count"></span>
+  <div class="spacer"></div>
   <button class="btn" id="btn-copy-mrkdwn">Copy as mrkdwn</button>
   <button class="btn" id="btn-copy-rich">Copy as Rich Text</button>
-  <div class="spacer"></div>
-  <span class="char-count" id="char-count"></span>
-  <button class="btn" id="btn-clear">Clear</button>
 </div>
 
 <button id="tips-toggle"><span class="arrow">▶</span> Tips &amp; Shortcuts</button>
@@ -451,7 +448,7 @@ function sanitizeHTML(html) {
 function unwrapSoftLineBreaks(text) {
   // Within a paragraph, merge lines that look like terminal-wrapped continuations.
   // Block starters and blank lines always break the merge.
-  const BLOCK = /^([ \t]*([-*+]|\d+\.)[ \t]|#{1,6}[ \t]|>|CBLK_)/;
+  const BLOCK = /^([ \t]*([-*+]|\d+\.)[ \t]|#{1,6}[ \t]|>|CBLK_|\|)/;
   const lines = text.split('\n');
   const out = [];
   let i = 0;
@@ -532,16 +529,14 @@ const PH_B_OPEN = '\uE000', PH_B_CLOSE = '\uE001'; // bold placeholder
 const PH_I_OPEN = '\uE002', PH_I_CLOSE = '\uE003'; // italic placeholder
 
 function processInlineMrkdwn(text, codes) {
-  // Restore inline code first (verbatim — no further processing)
-  text = text.replace(/ICODE_(\d+)/g, (_, i) => '`' + codes[+i] + '`');
-
   // Bold: **text** / __text__ → *text*  (use placeholder to avoid italic confusion)
   text = text.replace(/\*\*(.+?)\*\*/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
   text = text.replace(/__(.+?)__/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
 
   // Italic: *text* / _text_ → _text_
+  // Underscore italic requires word boundary (whitespace or line start/end) to avoid mid-word matches
   text = text.replace(/\*([^*\n]+?)\*/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
-  text = text.replace(/_([^_\n]+?)_/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+  text = text.replace(/(?<=^|[\s(])_([^_\n]+?)_(?=$|[\s.,;:!?)])/gm, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
 
   // Resolve placeholders
   text = text.replace(new RegExp(`${PH_B_OPEN}(.+?)${PH_B_CLOSE}`, 'gs'), '*$1*');
@@ -554,20 +549,20 @@ function processInlineMrkdwn(text, codes) {
   text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => `<${url}|${alt || url}>`);
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => `<${url}|${label}>`);
 
-  // Bare autolinks: <https://...>
   // Bare autolinks only — exclude | so <url|text> Slack links aren't stripped
   text = text.replace(/<(https?:\/\/[^>|]+)>/g, '$1');
+
+  // Restore inline code last — keeps _ and * inside backticks safe from italic/bold regexes
+  text = text.replace(/ICODE_(\d+)/g, (_, i) => '`' + codes[+i] + '`');
 
   return text;
 }
 
 function processInlineHTML(text, codes, esc) {
-  text = text.replace(/ICODE_(\d+)/g, (_, i) => `<code>${esc(codes[+i])}</code>`);
-
   text = text.replace(/\*\*(.+?)\*\*/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
   text = text.replace(/__(.+?)__/gs, `${PH_B_OPEN}$1${PH_B_CLOSE}`);
   text = text.replace(/\*([^*\n]+?)\*/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
-  text = text.replace(/_([^_\n]+?)_/g, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
+  text = text.replace(/(?<=^|[\s(])_([^_\n]+?)_(?=$|[\s.,;:!?)])/gm, `${PH_I_OPEN}$1${PH_I_CLOSE}`);
 
   text = text.replace(new RegExp(`${PH_B_OPEN}(.+?)${PH_B_CLOSE}`, 'gs'), '<b>$1</b>');
   text = text.replace(new RegExp(`${PH_I_OPEN}(.+?)${PH_I_CLOSE}`, 'gs'), '<i>$1</i>');
@@ -579,6 +574,9 @@ function processInlineHTML(text, codes, esc) {
     `<a href="${esc(sanitizeUrl(url))}">${esc(label)}</a>`);
   text = text.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, (_, url) =>
     `<a href="${sanitizeUrl(url)}">${url}</a>`);
+
+  // Restore inline code last — keeps _ and * inside backticks safe from italic/bold regexes
+  text = text.replace(/ICODE_(\d+)/g, (_, i) => `<code>${esc(codes[+i])}</code>`);
 
   return text;
 }
@@ -602,8 +600,9 @@ function convertToMrkdwn(raw, opts) {
   const codes = [];
   text = text.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `ICODE_${codes.length - 1}`; });
 
-  // Tables: find markdown tables and convert to fixed-width code blocks
-  text = text.replace(/((?:^\|[^\n]+\|\n)+)/gm, match => {
+  // Tables: find markdown tables and convert to fixed-width code blocks.
+  // Allow optional \n on the last row so tables at end-of-input are captured.
+  text = text.replace(/((?:^\|[^\n]+\|(?:\n|$))+)/gm, match => {
     if (/\|[ \t]*[-:]+[-| \t:]*\|/.test(match)) return tableToFixedWidth(match) + '\n';
     return match;
   });
@@ -618,10 +617,12 @@ function convertToMrkdwn(raw, opts) {
   // Unordered lists: - / * / + → bullet
   text = text.replace(/^([ \t]*)[-*+][ \t]+/gm, (_, indent) => indent + '• ');
 
-  // Process line by line: detect headings here so they're converted to *bold*
-  // after inline processing (avoids italic regex eating the * markers)
+  // Process line by line: detect headings and skip lines inside code fences.
+  // Tables are converted above into raw ``` blocks; we must not re-process their content.
+  let inFence = false;
   text = text.split('\n').map(line => {
-    if (line.startsWith('CBLK_')) return line;
+    if (line.startsWith('```')) { inFence = !inFence; return line; }
+    if (inFence || line.startsWith('CBLK_')) return line;
     const hMatch = line.match(/^(#{1,6})[ \t]+(.+)$/);
     if (hMatch) return `*${hMatch[2].trim()}*`;
     return processInlineMrkdwn(opts.stripLeading ? line.trimStart() : line, codes);
@@ -681,20 +682,15 @@ function convertToHTML(raw, opts) {
       continue;
     }
 
-    // Table detection
+    // Table detection — render as code block (Slack has no table support)
     if (line.startsWith('|') && i + 1 < lines.length && /^\|[ \t]*[-:]+/.test(lines[i + 1])) {
       closeList();
       const tableLines = [line];
       while (i + 1 < lines.length && lines[i + 1].startsWith('|')) tableLines.push(lines[++i]);
-      const dataRows = tableLines.filter(l => !/^\|[ \t]*[-:|]+/.test(l));
-      out.push('<table style="border-collapse:collapse">');
-      dataRows.forEach((row, ri) => {
-        const cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
-        const tag = ri === 0 ? 'th' : 'td';
-        const style = 'style="border:1px solid #ccc;padding:4px 8px"';
-        out.push('<tr>' + cells.map(c => `<${tag} ${style}>${esc(c)}</${tag}>`).join('') + '</tr>');
-      });
-      out.push('</table>');
+      const fixed = tableToFixedWidth(tableLines.join('\n'));
+      // Strip the ``` fences — we wrap in <pre><code> instead
+      const content = fixed.replace(/^```\n/, '').replace(/\n```$/, '');
+      out.push(`<pre><code>${esc(content)}</code></pre>`);
       continue;
     }
 
@@ -745,11 +741,12 @@ function convertToHTML(raw, opts) {
       continue;
     }
 
-    // Ordered list
-    const olMatch = line.match(/^[ \t]*\d+\.[ \t]+(.+)$/);
+    // Ordered list — use value attr on each <li> so Slack's paste preserves numbering
+    const olMatch = line.match(/^[ \t]*(\d+)\.[ \t]+(.+)$/);
     if (olMatch) {
-      if (listType !== 'ol') { closeList(); out.push('<ol>'); listType = 'ol'; }
-      out.push(`<li>${processInlineHTML(esc(olMatch[1]), codes, esc)}</li>`);
+      const num = olMatch[1];
+      if (listType !== 'ol') { closeList(); out.push(`<ol start="${num}">`); listType = 'ol'; }
+      out.push(`<li value="${num}">${processInlineHTML(esc(olMatch[2]), codes, esc)}</li>`);
       continue;
     }
 
@@ -783,13 +780,30 @@ function convert() {
 
 inputEl.addEventListener('input', convert);
 
-// Settings toggle
-document.getElementById('settings-toggle').addEventListener('click', () => {
+// Settings summary — shows active options as a sentence; click to expand panel
+function updateSettingsSummary() {
+  const opts = readOpts();
+  const parts = [];
+  if (opts.stripLeading)    parts.push('stripping whitespace');
+  if (opts.unwrap)          parts.push('unwrapping lines');
+  if (opts.stripAnsi)       parts.push('stripping ANSI');
+  if (opts.normalizeIndent) parts.push('normalizing indent');
+  const el = document.getElementById('settings-summary');
+  if (parts.length === 0) {
+    el.textContent = '⚙️ No processing options enabled';
+  } else {
+    const sentence = parts[0].charAt(0).toUpperCase() + parts[0].slice(1) +
+      (parts.length > 1 ? ', ' + parts.slice(1).join(', ') : '');
+    el.textContent = '⚙️ ' + sentence;
+  }
+}
+
+document.getElementById('settings-summary').addEventListener('click', () => {
   document.getElementById('settings-panel').classList.toggle('open');
 });
 
 document.querySelectorAll('#settings-panel input[type=checkbox]').forEach(el => {
-  el.addEventListener('change', () => { saveOpts(readOpts()); convert(); });
+  el.addEventListener('change', () => { saveOpts(readOpts()); updateSettingsSummary(); convert(); });
 });
 
 // Tips toggle
@@ -817,14 +831,30 @@ btnMrkdwn.addEventListener('click', async () => {
 });
 
 // Copy as Rich Text
+// Convert preview HTML to Slack-compatible clipboard HTML:
+// - <h1> → <p><b>…</b></p>  (Slack doesn't render h1 as bold)
+// - add <br> after each closing block tag so paragraphs get blank-line spacing
+function toSlackHTML(html) {
+  // Mark heading </p> tags so the block-<br> rule skips them (headings get no trailing blank line)
+  html = html.replace(/<h1>([\s\S]*?)<\/h1>/g, '<p><b>$1</b></p>\x00');
+  // Add <br> after block elements — but not after heading paragraphs (marked with \x00)
+  html = html.replace(/(<\/p>|<\/ul>|<\/ol>|<\/pre>|<\/table>|<\/blockquote>)(?!\x00)/g, '$1<br>');
+  // Between consecutive headings add a blank line (preceding content won't provide one)
+  html = html.replace(/\x00\n(?=<p><b>)/g, '\n<br>\n');
+  html = html.replace(/\x00/g, '');
+  // Wrap in full document with fragment markers — required for native apps (e.g. Slack on macOS)
+  // to correctly scope formatting; without this, bold can bleed into following lines
+  return `<html><body><!--StartFragment-->${html}<!--EndFragment--></body></html>`;
+}
+
 const btnRich = document.getElementById('btn-copy-rich');
 btnRich.addEventListener('click', async () => {
   if (!lastHTML) return;
   try {
     await navigator.clipboard.write([
       new ClipboardItem({
-        'text/html':  new Blob([lastHTML],   { type: 'text/html' }),
-        'text/plain': new Blob([lastMrkdwn], { type: 'text/plain' }),
+        'text/html':  new Blob([toSlackHTML(lastHTML)], { type: 'text/html' }),
+        'text/plain': new Blob([lastMrkdwn],             { type: 'text/plain' }),
       })
     ]);
   } catch {
@@ -842,7 +872,7 @@ function flash(btn, label) {
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
 applyOpts(loadOpts());
-document.getElementById('build').textContent = 'build: 2026-04-01T' + new Date().toLocaleTimeString();
+updateSettingsSummary();
 </script>
 </body>
 </html>
